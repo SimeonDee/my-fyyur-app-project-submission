@@ -30,7 +30,8 @@ from flask_sqlalchemy import SQLAlchemy
 import sys
 from datetime import date, datetime
 from database import db
-from models import Venue, Artist, VenueGenre, ArtistGenre, Show
+from models import Venue, Artist
+from models import VenueGenre, ArtistGenre, Show
 
 #----------------------------------------------------------------------------#
 # App Config.
@@ -84,14 +85,14 @@ def get_formatted_shows(shows, shows_for='venue'):
     for show in shows:
         data = dict()
         if shows_for == 'venue':  # if 'venue', get artist details
-            show_artist = show.artist
+            show_artist = show.show_artist
             data["artist_id"] = show_artist.id
             data["artist_name"] = show_artist.name
             data["artist_image_link"] = show_artist.image_link
             data["start_time"] = show.start_time
 
         else:   # if shows_for == 'artist', then get venue details
-            show_venue = show.venue
+            show_venue = show.show_venue
             data["venue_id"] = show_venue.id
             data["venue_name"] = show_venue.name
             data["venue_image_link"] = show_venue.image_link
@@ -125,41 +126,73 @@ def venues():
     error = False
     data = []
     try:
+        # #####################################################################
+        # # Commented: Re-implemented to satisfy review requirements
+        # #####################################################################
+        # # Distinct cities fetch
+        # distinct_cities = db.session.query(Venue).distinct(Venue.city).all()
+
+        # # All upcoming shows
+        # upc_shows = Show.query.filter(Show.start_time >= datetime.now()).all()
+
+        # for venue in distinct_cities:
+        #     city = venue.city
+        #     state = venue.state
+
+        #     upc_city_venues = [
+        #         {
+        #             "id": show.show_venue.id,
+        #             "name": show.show_venue.name,
+        #             "num_upcoming_shows": len(
+        #                 [s for s in upc_shows if s.show_venue.city == city and s.show_venue.name == show.show_venue.name])
+        #         } for show in upc_shows if show.show_venue.city == city]
+
+        #     # copy created to avoid in-place modification
+        #     # when removing duplicates
+        #     copy_upc_city_venues = upc_city_venues.copy()
+
+        #     # Remove duplicates
+        #     names = []
+        #     for t in copy_upc_city_venues:
+        #         if t['name'] in names:
+        #             upc_city_venues.remove(t)
+        #         else:
+        #             names.append(t['name'])
+        #     names = None  # clear memory
+
+        #     data.append({
+        #         'city': city,
+        #         'state': state,
+        #         'venues': upc_city_venues
+        #     })
+        # # ####################################################################
+
         # Distinct cities fetch
         distinct_cities = db.session.query(Venue).distinct(Venue.city).all()
 
-        # All upcoming shows
-        upc_shows = Show.query.filter(Show.start_time >= datetime.now()).all()
+        for location in distinct_cities:
+            city = location.city
+            state = location.state
 
-        for venue in distinct_cities:
-            city = venue.city
-            state = venue.state
+            city_venues = db.session.query(
+                Venue).filter(Venue.city == city).all()
 
-            upc_city_venues = [
-                {
-                    "id": show.venue.id,
-                    "name": show.venue.name,
-                    "num_upcoming_shows": len(
-                        [s for s in upc_shows if s.show_venue.city == city and s.show_venue.name == show.venue.name])
-                } for show in upc_shows if show.show_venue.city == city]
+            venues_list = []
+            for venue in city_venues:
+                venue_upc_shows_count = db.session.query(Show).join(
+                    Venue).filter(Show.venue_id == venue.id).filter(
+                        Show.start_time >= datetime.now()).count()
 
-            # copy created to avoid in-place modification
-            # when removing duplicates
-            copy_upc_city_venues = upc_city_venues.copy()
-
-            # Remove duplicates
-            names = []
-            for t in copy_upc_city_venues:
-                if t['name'] in names:
-                    upc_city_venues.remove(t)
-                else:
-                    names.append(t['name'])
-            names = None  # clear memory
+                venues_list.append({
+                    "id": venue.id,
+                    "name": venue.name,
+                    "num_upcoming_shows": venue_upc_shows_count
+                })
 
             data.append({
-                'city': city,
-                'state': state,
-                'venues': upc_city_venues
+                "city": city,
+                "state": state,
+                "venues": venues_list
             })
 
         # Mock data provided by default
@@ -184,8 +217,6 @@ def venues():
         #         "num_upcoming_shows": 0,
         #     }]
         # }]
-
-        flash('Fetch successful')
 
     except exc.SQLAlchemyError as err:
         error = True
@@ -246,26 +277,54 @@ def show_venue(venue_id):
     # shows the venue page with the given venue_id
     # TODO: replace with real venue data from the venues table, using venue_id
 
-    curr_venue = Venue.query.get(venue_id)
+    curr_venue = Venue.query.get_or_404(venue_id)
     curr_venue = curr_venue.to_dico()
 
     # Moderating 'genres' for display
     curr_venue['genres'] = [genre.name for genre in curr_venue['genres']]
 
-    q_upcoming_shows = Show.query.filter(
-        Show.venue_id == venue_id, Show.start_time >= datetime.now())
+    # # ##############################################################
+    # COMMENTED for re-implementation to meet Review Requirement
+    # # ##############################################################
+    # q_upcoming_shows = Show.query.filter(
+    #     Show.venue_id == venue_id, Show.start_time >= datetime.now())
 
-    q_past_shows = Show.query.filter(
-        Show.venue_id == venue_id, Show.start_time < datetime.now())
+    # q_past_shows = Show.query.filter(
+    #     Show.venue_id == venue_id, Show.start_time < datetime.now())
 
-    past_shows = get_formatted_shows(q_past_shows.all(), shows_for='venue')
-    upcoming_shows = get_formatted_shows(
-        q_upcoming_shows.all(), shows_for='venue')
+    # past_shows = get_formatted_shows(q_past_shows.all(), shows_for='venue')
+    # upcoming_shows = get_formatted_shows(
+    #     q_upcoming_shows.all(), shows_for='venue')
+    # # ##############################################################
+
+    q_upcoming_shows = db.session.query(Show).join(Artist).filter(
+        Show.venue_id == venue_id).filter(Show.start_time >= datetime.now()).all()
+
+    q_past_shows = db.session.query(Show).join(Artist).filter(
+        Show.venue_id == venue_id).filter(Show.start_time < datetime.now()).all()
+
+    past_shows = []
+    for show in q_past_shows:
+        past_shows.append({
+            "artist_id": show.show_artist.id,
+            "artist_name": show.show_artist.name,
+            "artist_image_link": show.show_artist.image_link,
+            "start_time": show.start_time
+        })
+
+    upcoming_shows = []
+    for show in q_upcoming_shows:
+        upcoming_shows.append({
+            "artist_id": show.show_artist.id,
+            "artist_name": show.show_artist.name,
+            "artist_image_link": show.show_artist.image_link,
+            "start_time": show.start_time
+        })
 
     curr_venue["past_shows"] = past_shows
     curr_venue["upcoming_shows"] = upcoming_shows
-    curr_venue["past_shows_count"] = q_past_shows.count()
-    curr_venue["upcoming_shows_count"] = q_upcoming_shows.count()
+    curr_venue["past_shows_count"] = len(past_shows)
+    curr_venue["upcoming_shows_count"] = len(upcoming_shows)
 
     # # Mock data provided by default
     # data1 = {
@@ -386,7 +445,8 @@ def create_venue_submission():
 
         # Because seeking_talent returns 'y' instead of True/False
         if type(seeking_talent) is not bool:
-            seeking_talent = True if seeking_talent.startswith('y') else False
+            seeking_talent = True if str(
+                seeking_talent).startswith('y') else False
         venue_name = name
 
         # print('#' * 30)
@@ -539,26 +599,55 @@ def show_artist(artist_id):
     # shows the artist page with the given artist_id
     # TODO: replace with real artist data from the artist table, using artist_id
 
-    curr_artist = Artist.query.get(artist_id)
+    curr_artist = Artist.query.get_or_404(artist_id)
     curr_artist = curr_artist.to_dico()
 
-    #################
+    # Moderating artist's genres for display purpose
     curr_artist['genres'] = [genre.name for genre in curr_artist['genres']]
 
-    q_upcoming_shows = Show.query.filter(
-        Show.artist_id == artist_id, Show.start_time >= datetime.now())
+    # # ################################################################
+    # # COMMENTED for ReImplementation to Satisfy Review Requirements
+    # # ################################################################
 
-    q_past_shows = Show.query.filter(
-        Show.artist_id == artist_id, Show.start_time < datetime.now())
+    # q_upcoming_shows = Show.query.filter(
+    #     Show.artist_id == artist_id, Show.start_time >= datetime.now())
 
-    past_shows = get_formatted_shows(q_past_shows.all(), shows_for='artist')
-    upcoming_shows = get_formatted_shows(
-        q_upcoming_shows.all(), shows_for='artist')
+    # q_past_shows = Show.query.filter(
+    #     Show.artist_id == artist_id, Show.start_time < datetime.now())
+
+    # past_shows = get_formatted_shows(q_past_shows.all(), shows_for='artist')
+    # upcoming_shows = get_formatted_shows(
+    #     q_upcoming_shows.all(), shows_for='artist')
+    # # ################################################################
+
+    q_upcoming_shows = db.session.query(Show).join(Venue).filter(
+        Show.artist_id == artist_id).filter(Show.start_time >= datetime.now()).all()
+
+    q_past_shows = db.session.query(Show).join(Venue).filter(
+        Show.artist_id == artist_id).filter(Show.start_time < datetime.now()).all()
+
+    past_shows = []
+    for show in q_past_shows:
+        past_shows.append({
+            "venue_id": show.show_venue.id,
+            "venue_name": show.show_venue.name,
+            "venue_image_link": show.show_venue.image_link,
+            "start_time": show.start_time
+        })
+
+    upcoming_shows = []
+    for show in q_upcoming_shows:
+        upcoming_shows.append({
+            "venue_id": show.show_venue.id,
+            "venue_name": show.show_venue.name,
+            "venue_image_link": show.show_venue.image_link,
+            "start_time": show.start_time
+        })
 
     curr_artist["past_shows"] = past_shows
     curr_artist["upcoming_shows"] = upcoming_shows
-    curr_artist["past_shows_count"] = q_past_shows.count()
-    curr_artist["upcoming_shows_count"] = q_upcoming_shows.count()
+    curr_artist["past_shows_count"] = len(past_shows)
+    curr_artist["upcoming_shows_count"] = len(upcoming_shows)
 
     # # Testing
     # print('*' * 10, f'Artist <{artist_id}> --- ', '*' * 10)
@@ -729,7 +818,8 @@ def edit_artist_submission(artist_id):
 
         # Because seeking_talent returns 'y' instead of True/False
         if type(seeking_venue) is not bool:
-            seeking_venue = True if seeking_venue.startswith('y') else False
+            seeking_venue = True if str(
+                seeking_venue).startswith('y') else False
 
         found_artist.seeking_venue = seeking_venue
 
@@ -839,7 +929,8 @@ def edit_venue_submission(venue_id):
         # Moderating 'seeking_talent' field into boolean
         # Because seeking_talent returns 'y' instead of True/False
         if type(seeking_talent) is not bool:
-            seeking_talent = True if seeking_talent.startswith('y') else False
+            seeking_talent = True if str(
+                seeking_talent).startswith('y') else False
         found_venue.seeking_talent = seeking_talent
 
         new_genres = request.form.getlist('genres')
@@ -915,7 +1006,8 @@ def create_artist_submission():
 
         # Because seeking_talent returns 'y' instead of True/False
         if type(seeking_venue) is not bool:
-            seeking_venue = True if seeking_venue.startswith('y') else False
+            seeking_venue = True if str(
+                seeking_venue).startswith('y') else False
 
         # print('Keys Gotten', '#' * 30)
         # for key in request.form.keys():

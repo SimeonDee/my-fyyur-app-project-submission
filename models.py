@@ -22,11 +22,9 @@ class Show(db.Model):
         'Artist.id'), nullable=False)
     start_time = db.Column(db.DateTime, default=datetime.now())
 
-    venue = db.relationship('Venue', back_populates='artists')
-    artist = db.relationship('Artist', back_populates='venues')
-
     def __repr__(self) -> str:
-        formatted_date = date.strftime(self.start_time, "%d-%m-%Y %H:%M")
+        formatted_date = datetime.strftime(
+            self.start_time, "%d-%m-%Y %H:%M")
         return f'<Show id:{self.id} venue_id:{self.venue_id} artist_id:{self.artist_id} start_time:{formatted_date}>'
 
 ###########################  NOTE  ###########################
@@ -67,11 +65,11 @@ class Venue(db.Model):
     __tablename__ = 'Venue'
 
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String)
-    city = db.Column(db.String(120))
-    state = db.Column(db.String(120))
-    address = db.Column(db.String(120))
-    phone = db.Column(db.String(120))
+    name = db.Column(db.String, nullable=False)
+    city = db.Column(db.String(120), nullable=False)
+    state = db.Column(db.String(120), nullable=False)
+    address = db.Column(db.String(120), nullable=False)
+    phone = db.Column(db.String(120), nullable=False)
     image_link = db.Column(db.String(500))
     facebook_link = db.Column(db.String(120))
 
@@ -85,8 +83,8 @@ class Venue(db.Model):
     # 'Genres' modeled separately to conform to 3rd-NF requirement
     genres = db.relationship('VenueGenre', backref='genre_venue', lazy=True)
     shows = db.relationship('Show', backref='show_venue')
-    artists = db.relationship(
-        'Show', backref=db.backref('venues', lazy=True))
+    # artists = db.relationship(
+    #     'Show', backref=db.backref('venues', lazy=True))
 
     # Method defined to get dictionary equivalence of model object
     def to_dico(self):
@@ -118,15 +116,16 @@ class Artist(db.Model):
     __tablename__ = 'Artist'
 
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String)
+    name = db.Column(db.String, nullable=False)
     city = db.Column(db.String(120))
     state = db.Column(db.String(120))
-    phone = db.Column(db.String(120))
+    phone = db.Column(db.String(120), nullable=False)
     # genres = db.Column(db.String(120))
     image_link = db.Column(db.String(500))
     facebook_link = db.Column(db.String(120))
 
     # TODO: implement any missing fields, as a database migration using Flask-Migrate
+
     website = db.Column(db.String(250))
     seeking_venue = db.Column(db.Boolean, default=False)
     seeking_description = db.Column(db.String(500))
@@ -134,7 +133,7 @@ class Artist(db.Model):
     # 'Genres' modeled separately to conform to 3rd-NF requirement
     genres = db.relationship('ArtistGenre', backref='genre_artist', lazy=True)
     shows = db.relationship('Show', backref='show_artist', lazy=True)
-    venues = db.relationship('Show', backref=db.backref('artists', lazy=True))
+    # venues = db.relationship('Show', backref=db.backref('artists', lazy=True))
 
     def to_dico(self):
         dico = {
